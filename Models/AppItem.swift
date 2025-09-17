@@ -1,0 +1,73 @@
+//
+//  AppItem.swift
+//  LaunchBoard
+//
+//  Created by Haoyuan Yan on 17.09.25.
+//
+
+import Foundation
+import AppKit
+
+/// 应用程序信息模型
+struct AppItem: Codable, Identifiable, Equatable {
+    let id = UUID()
+    let name: String                    // 应用名称
+    let displayName: String             // 显示名称
+    let bundleIdentifier: String        // Bundle ID
+    let path: String                    // .app 文件路径
+    let iconPath: String?               // 图标路径
+    var position: GridPosition?         // 网格位置
+    
+    // MARK: - Codable 支持
+    enum CodingKeys: String, CodingKey {
+        case id, name, displayName, bundleIdentifier, path, iconPath, position
+    }
+    
+    // MARK: - Equatable 支持
+    static func == (lhs: AppItem, rhs: AppItem) -> Bool {
+        return lhs.id == rhs.id
+    }
+    
+    // MARK: - 便利方法
+    
+    /// 获取应用图标
+    var icon: NSImage? {
+        // 优先使用缓存的图标路径
+        if let iconPath = iconPath,
+           let image = NSImage(contentsOfFile: iconPath) {
+            return image
+        }
+        
+        // 回退到从 bundle 获取图标
+        if let bundle = Bundle(path: path),
+           let iconFile = bundle.object(forInfoDictionaryKey: "CFBundleIconFile") as? String {
+            let iconPath = bundle.path(forResource: iconFile, ofType: nil) ??
+                          bundle.path(forResource: iconFile, ofType: "icns")
+            if let iconPath = iconPath {
+                return NSImage(contentsOfFile: iconPath)
+            }
+        }
+        
+        // 最后回退到系统默认图标
+        return NSWorkspace.shared.icon(forFile: path)
+    }
+    
+    /// 启动应用
+    func launch() -> Bool {
+        let url = URL(fileURLWithPath: path)
+        do {
+            try NSWorkspace.shared.launchApplication(at: url, 
+                                                   options: [], 
+                                                   configuration: [:])
+            return true
+        } catch {
+            print("启动应用失败: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    /// 检查应用是否仍然存在
+    var exists: Bool {
+        return FileManager.default.fileExists(atPath: path)
+    }
+}
