@@ -53,7 +53,6 @@ class AppScannerService: ObservableObject {
                     }
                 } else {
                     print("NSWorkspace 扫描失败，尝试备用方法")
-                    // 备用方法：扫描常见目录
                     apps = []
                 }
 
@@ -66,8 +65,6 @@ class AppScannerService: ObservableObject {
 
     /// 获取所有应用程序 URL
     private func getAllApplicationURLs() -> [URL]? {
-        // 使用 NSWorkspace 的 URL 枚举方法
-        let workspace = NSWorkspace.shared
         var applicationURLs: [URL] = []
 
         // 扫描多个应用目录
@@ -86,7 +83,6 @@ class AppScannerService: ObservableObject {
             ) else { continue }
 
             for case let url as URL in enumerator {
-                // 检查是否为应用程序
                 if url.pathExtension == "app" {
                     do {
                         let resourceValues = try url.resourceValues(forKeys: [.isApplicationKey])
@@ -94,7 +90,6 @@ class AppScannerService: ObservableObject {
                             applicationURLs.append(url)
                         }
                     } catch {
-                        // 如果无法获取资源值，但是以 .app 结尾，也添加进去
                         if url.path.hasSuffix(".app") {
                             applicationURLs.append(url)
                         }
@@ -110,12 +105,11 @@ class AppScannerService: ObservableObject {
     private func scanApplicationsUsingDirectories() async -> [AppItem] {
         var allApps: [AppItem] = []
 
-        // 扩展扫描路径，包含更多系统目录
         let expandedScanPaths = [
-            "/Applications",                    // 用户应用目录
-            "/System/Applications",             // 系统应用目录（macOS 10.15+）
-            "/Applications/Utilities",          // 系统工具
-            NSHomeDirectory() + "/Applications" // 用户应用目录
+            "/Applications",
+            "/System/Applications",
+            "/Applications/Utilities",
+            NSHomeDirectory() + "/Applications"
         ]
 
         for path in expandedScanPaths {
@@ -123,7 +117,6 @@ class AppScannerService: ObservableObject {
             allApps.append(contentsOf: apps)
         }
 
-        // 去重 (基于 bundle identifier)
         let uniqueApps = removeDuplicates(from: allApps)
 
         print("目录扫描完成，共找到 \(uniqueApps.count) 个应用")
@@ -132,7 +125,6 @@ class AppScannerService: ObservableObject {
     
     // MARK: - 私有方法
     
-    /// 扫描指定目录
     private func scanDirectory(_ directoryPath: String) async -> [AppItem] {
         let fileManager = FileManager.default
         var apps: [AppItem] = []
@@ -147,8 +139,6 @@ class AppScannerService: ObservableObject {
             
             for item in contents {
                 let itemPath = directoryPath + "/" + item
-                
-                // 检查是否为 .app 文件
                 if item.hasSuffix(".app") {
                     if let appItem = createAppItem(from: itemPath) {
                         apps.append(appItem)
@@ -162,31 +152,24 @@ class AppScannerService: ObservableObject {
         return apps
     }
     
-    /// 从应用路径创建 AppItem
     private func createAppItem(from appPath: String) -> AppItem? {
-        // 检查文件是否存在
         guard FileManager.default.fileExists(atPath: appPath) else {
             print("应用不存在: \(appPath)")
             return nil
         }
 
-        // 检查是否为 .app 文件
         guard appPath.hasSuffix(".app") else {
             print("不是 .app 文件: \(appPath)")
             return nil
         }
 
-        // 尝试创建 Bundle
         guard let bundle = Bundle(path: appPath) else {
             print("无法创建 Bundle: \(appPath)")
-            // 使用备用方法创建 AppItem
             return createAppItemFallback(from: appPath)
         }
 
-        // 检查是否有有效的 Bundle Identifier
         let bundleIdentifier = bundle.bundleIdentifier ?? "unknown.\(UUID().uuidString)"
 
-        // 获取应用名称，尝试多个键值
         let name = bundle.object(forInfoDictionaryKey: "CFBundleName") as? String ??
                   bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ??
                   bundle.object(forInfoDictionaryKey: "CFBundleExecutable") as? String ??
@@ -194,7 +177,6 @@ class AppScannerService: ObservableObject {
 
         let displayName = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? name
 
-        // 过滤掉一些不需要显示的应用
         if shouldSkipApplication(name: name, bundleId: bundleIdentifier, path: appPath) {
             return nil
         }
@@ -204,17 +186,15 @@ class AppScannerService: ObservableObject {
             displayName: displayName,
             bundleIdentifier: bundleIdentifier,
             path: appPath,
-            iconPath: nil, // 不再预先提取图标路径，让 AppItem.icon 动态获取
+            iconPath: nil,
             position: nil
         )
     }
 
-    /// 备用方法：当无法创建 Bundle 时使用
     private func createAppItemFallback(from appPath: String) -> AppItem? {
         let url = URL(fileURLWithPath: appPath)
         let name = url.deletingPathExtension().lastPathComponent
 
-        // 简单的名称清理
         let cleanName = name.replacingOccurrences(of: "_", with: " ")
                            .replacingOccurrences(of: "-", with: " ")
 
@@ -228,9 +208,7 @@ class AppScannerService: ObservableObject {
         )
     }
 
-    /// 判断是否应该跳过某个应用
     private func shouldSkipApplication(name: String, bundleId: String, path: String) -> Bool {
-        // 跳过系统内部组件
         let skipPatterns = [
             "com.apple.loginwindow",
             "com.apple.dock",
@@ -244,12 +222,10 @@ class AppScannerService: ObservableObject {
             }
         }
 
-        // 跳过隐藏的应用（名称以 . 开头）
         if name.hasPrefix(".") {
             return true
         }
 
-        // 跳过一些特殊路径
         if path.contains("/System/Library/CoreServices/") ||
            path.contains("/Library/Application Support/") {
             return true
@@ -258,8 +234,6 @@ class AppScannerService: ObservableObject {
         return false
     }
 
-    
-    /// 去除重复的应用 (基于 bundle identifier)
     private func removeDuplicates(from apps: [AppItem]) -> [AppItem] {
         var seen = Set<String>()
         var uniqueApps: [AppItem] = []
@@ -274,3 +248,4 @@ class AppScannerService: ObservableObject {
         return uniqueApps
     }
 }
+

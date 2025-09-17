@@ -14,10 +14,16 @@ enum DropAction: Equatable {
     case groupWith(targetIndexInPage: Int)  // 与目标单元格分组（若目标是 group 则加入该 group）
 }
 
+/// 自动翻页方向（放到文件作用域，避免 Swift 6 的 actor 隔离问题）
+private enum AppGridScrollDirection {
+    case previous, next
+}
+
 /// 应用网格视图 - 7x5 网格布局显示应用、分组，支持拖拽重排和自动翻页
 struct AppGridView: View {
-    let cells: [GridCell]                  // 改为混合数据源
+    let cells: [GridCell]                  // 混合数据源
     let onAppTap: (AppItem) -> Void
+    let onGroupTap: ((AppGroup) -> Void)?
     let onDragStarted: ((AppItem) -> Void)?
     let onDragEnded: (() -> Void)?
     // 兼容旧回调（插入）
@@ -27,6 +33,9 @@ struct AppGridView: View {
     let onPageChange: ((Int) -> Void)?  // 页面切换回调
     let currentPage: Int                // 当前页面
     let totalPages: Int                 // 总页数
+    // matchedGeometry 命名空间与当前展开分组 ID
+    let animationNamespace: Namespace.ID?
+    let expandedGroupID: UUID?
 
     @State private var draggedApp: AppItem?
     @State private var targetIndex: Int?
@@ -37,16 +46,20 @@ struct AppGridView: View {
     init(
         cells: [GridCell],
         onAppTap: @escaping (AppItem) -> Void,
+        onGroupTap: ((AppGroup) -> Void)? = nil,
         onDragStarted: ((AppItem) -> Void)? = nil,
         onDragEnded: (() -> Void)? = nil,
         onAppMoved: ((AppItem, Int) -> Void)? = nil,
         onDropAction: ((AppItem, DropAction) -> Void)? = nil,
         onPageChange: ((Int) -> Void)? = nil,
         currentPage: Int = 0,
-        totalPages: Int = 1
+        totalPages: Int = 1,
+        animationNamespace: Namespace.ID? = nil,
+        expandedGroupID: UUID? = nil
     ) {
         self.cells = cells
         self.onAppTap = onAppTap
+        self.onGroupTap = onGroupTap
         self.onDragStarted = onDragStarted
         self.onDragEnded = onDragEnded
         self.onAppMoved = onAppMoved
@@ -54,6 +67,8 @@ struct AppGridView: View {
         self.onPageChange = onPageChange
         self.currentPage = currentPage
         self.totalPages = totalPages
+        self.animationNamespace = animationNamespace
+        self.expandedGroupID = expandedGroupID
     }
     
     // 7x5 网格配置
@@ -80,7 +95,7 @@ struct AppGridView: View {
                         stopAutoScroll()
                     }
             )
-            .onChange(of: draggedApp) { _ in
+            .onChange(of: draggedApp) { _, _ in
                 containerSize = geometry.size
             }
         }
@@ -111,7 +126,6 @@ struct AppGridView: View {
             )
             .dropDestination(for: AppItem.self) { droppedApps, location in
                 guard let droppedApp = droppedApps.first else { return false }
-                // 避免对自己进行分组或插入前的无意义操作
                 if droppedApp.id == app.id { return false }
                 
                 stopAutoScroll()
@@ -120,7 +134,6 @@ struct AppGridView: View {
                 if let onDropAction {
                     onDropAction(droppedApp, action)
                 } else {
-                    // 兼容旧回调：仅在 insertBefore/insertAtEmpty 时回退
                     switch action {
                     case .insertBefore(let idx), .insertAtEmpty(let idx):
                         onAppMoved?(droppedApp, idx)
@@ -144,50 +157,72 @@ struct AppGridView: View {
                     .animation(.easeInOut(duration: 0.2), value: targetIndex)
             )
             
-        case .group:
-            // 分组占位（圆角矩形）
-            RoundedRectangle(cornerRadius: 12)
+        case .group(let group):
+            // 分组占位视图
+            let rect = RoundedRectangle(cornerRadius: 12)
                 .fill(Color.secondary.opacity(0.2))
                 .frame(width: 64, height: 64)
-                .overlay(
+                .overlay(alignment: .center) {
                     Image(systemName: "square.grid.2x2")
                         .font(.system(size: 20))
                         .foregroundColor(.secondary)
-                )
-                .dropDestination(for: AppItem.self) { droppedApps, location in
-                    guard let droppedApp = droppedApps.first else { return false }
-                    stopAutoScroll()
-                    
-                    // 在 group 占位上：左侧仍视为“插入前”，中/右侧视为“加入该 group”
-                    let action = dropAction(for: location, isEmptySlot: false, indexInPage: index, targetViewSize: CGSize(width: 64, height: 64))
-                    if let onDropAction {
-                        onDropAction(droppedApp, action)
-                    } else {
-                        switch action {
-                        case .insertBefore(let idx), .insertAtEmpty(let idx):
-                            onAppMoved?(droppedApp, idx)
-                        case .groupWith:
-                            break
-                        }
-                    }
-                    return true
-                } isTargeted: { isTargeted in
-                    if isTargeted {
-                        targetIndex = index
-                        checkEdgeScrolling(at: dragLocation, in: geometry.size)
-                    } else {
-                        targetIndex = nil
-                        stopAutoScroll()
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    Text("\(group.apps.count)")
+                        .font(.caption2)
+                        .padding(4)
+                        .background(
+                            Capsule().fill(Color.black.opacity(0.6))
+                        )
+                        .foregroundColor(.white)
+                        .padding(4)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+            
+            Group {
+                if let ns = animationNamespace {
+                    // 当该分组正被展开时，网格中的这一视图必须 isSource = false
+                    let isSource = (expandedGroupID != group.id)
+                    rect.matchedGeometryEffect(id: group.id, in: ns, isSource: isSource)
+                } else {
+                    rect
+                }
+            }
+            .onTapGesture {
+                onGroupTap?(group)
+            }
+            .dropDestination(for: AppItem.self) { droppedApps, location in
+                guard let droppedApp = droppedApps.first else { return false }
+                stopAutoScroll()
+                
+                let action = dropAction(for: location, isEmptySlot: false, indexInPage: index, targetViewSize: CGSize(width: 64, height: 64))
+                if let onDropAction {
+                    onDropAction(droppedApp, action)
+                } else {
+                    switch action {
+                    case .insertBefore(let idx), .insertAtEmpty(let idx):
+                        onAppMoved?(droppedApp, idx)
+                    case .groupWith:
+                        break
                     }
                 }
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(targetIndex == index ? Color.accentColor.opacity(0.6) : Color.clear, lineWidth: 2)
-                        .animation(.easeInOut(duration: 0.2), value: targetIndex)
-                )
+                return true
+            } isTargeted: { isTargeted in
+                if isTargeted {
+                    targetIndex = index
+                    checkEdgeScrolling(at: dragLocation, in: geometry.size)
+                } else {
+                    targetIndex = nil
+                    stopAutoScroll()
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(targetIndex == index ? Color.accentColor.opacity(0.6) : Color.clear, lineWidth: 2)
+                    .animation(.easeInOut(duration: 0.2), value: targetIndex)
+            )
             
         case .empty:
-            // 空白占位
             Rectangle()
                 .fill(Color.clear)
                 .frame(width: 64, height: 64)
@@ -229,7 +264,6 @@ struct AppGridView: View {
         if isEmptySlot {
             return .insertAtEmpty(indexInPage: indexInPage)
         }
-        // 以目标视图宽度的 0.35 作为“左侧插入”阈值，中间/右侧视为覆盖分组/加入分组
         let leftThreshold = targetViewSize.width * 0.35
         if location.x <= leftThreshold {
             return .insertBefore(indexInPage: indexInPage)
@@ -250,12 +284,16 @@ struct AppGridView: View {
         }
     }
 
-    private enum ScrollDirection { case previous, next }
-
-    private func startAutoScroll(direction: ScrollDirection) {
+    private func startAutoScroll(direction: AppGridScrollDirection) {
         stopAutoScroll()
         autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: false) { _ in
-            let targetPage = direction == .previous ? max(0, currentPage - 1) : min(totalPages - 1, currentPage + 1)
+            let targetPage: Int
+            switch direction {
+            case .previous:
+                targetPage = max(0, currentPage - 1)
+            case .next:
+                targetPage = min(totalPages - 1, currentPage + 1)
+            }
             if targetPage != currentPage {
                 onPageChange?(targetPage)
             }

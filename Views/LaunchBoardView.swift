@@ -10,6 +10,7 @@ import SwiftUI
 /// 主视图 - LaunchBoard 的核心界面
 struct LaunchBoardView: View {
     @StateObject private var viewModel = LaunchBoardViewModel()
+    @Namespace private var folderNS   // 用于 matchedGeometryEffect
     
     var body: some View {
         ZStack {
@@ -35,6 +36,11 @@ struct LaunchBoardView: View {
                         onAppTap: { app in
                             viewModel.launchApp(app)
                         },
+                        onGroupTap: { group in
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.86, blendDuration: 0.2)) {
+                                viewModel.openGroup(group)
+                            }
+                        },
                         onDragStarted: { app in
                             print("开始拖拽应用: \(app.displayName)")
                         },
@@ -42,7 +48,6 @@ struct LaunchBoardView: View {
                             print("拖拽结束")
                         },
                         onAppMoved: { app, targetIndex in
-                            // 兼容旧回调：默认视为插入到该 cell 之前
                             viewModel.handleDrop(app, action: .insertBefore(indexInPage: targetIndex))
                         },
                         onDropAction: { app, action in
@@ -52,7 +57,9 @@ struct LaunchBoardView: View {
                             viewModel.goToPage(targetPage)
                         },
                         currentPage: viewModel.currentPage,
-                        totalPages: viewModel.totalPages
+                        totalPages: viewModel.totalPages,
+                        animationNamespace: folderNS,
+                        expandedGroupID: viewModel.expandedGroup?.id
                     )
                     .padding(.horizontal, 40)
                 }
@@ -84,9 +91,24 @@ struct LaunchBoardView: View {
                 
                 Spacer()
             }
+            
+            // 分组展开覆盖层（类似 iPad 文件夹展开）
+            if let expandedGroup = viewModel.expandedGroup {
+                AppGroupOverlayView(
+                    group: expandedGroup,
+                    namespace: folderNS,
+                    onClose: {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.86, blendDuration: 0.2)) {
+                            viewModel.closeExpandedGroup()
+                        }
+                    },
+                    onAppTap: { app in viewModel.launchApp(app) }
+                )
+                .transition(.identity) // 使用 matchedGeometryEffect，无需额外过渡
+                .zIndex(1)
+            }
         }
         .onAppear {
-            // 视图出现时加载数据
             if viewModel.apps.isEmpty {
                 Task {
                     await viewModel.scanApplications()

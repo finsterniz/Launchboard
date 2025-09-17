@@ -27,6 +27,7 @@ class LaunchBoardViewModel: ObservableObject {
     @Published var currentPage: Int = 0
     @Published var isLoading: Bool = false
     @Published var gridLayout: [[String?]] = Array(repeating: Array(repeating: nil, count: 7), count: 5)
+    @Published var expandedGroup: AppGroup? = nil   // 新增：当前展开的分组
     
     // MARK: - 服务
     private let appScanner = AppScannerService()
@@ -155,6 +156,14 @@ class LaunchBoardViewModel: ObservableObject {
     func goToPage(_ page: Int) {
         let targetPage = max(0, min(page, totalPages - 1))
         if targetPage != currentPage { currentPage = targetPage; saveData() }
+    }
+    
+    // 展开/关闭分组
+    func openGroup(_ group: AppGroup) {
+        expandedGroup = group
+    }
+    func closeExpandedGroup() {
+        expandedGroup = nil
     }
 
     // 兼容旧接口：移动应用到指定位置（在当前页内）
