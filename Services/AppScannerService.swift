@@ -83,54 +83,17 @@ class AppScannerService: ObservableObject {
                   URL(fileURLWithPath: appPath).deletingPathExtension().lastPathComponent
         
         let displayName = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? name
-        
-        // 获取图标路径
-        let iconPath = extractIconPath(from: bundle)
-        
+
         return AppItem(
             name: name,
             displayName: displayName,
             bundleIdentifier: bundleIdentifier,
             path: appPath,
-            iconPath: iconPath,
+            iconPath: nil, // 不再预先提取图标路径，让 AppItem.icon 动态获取
             position: nil
         )
     }
-    
-    /// 提取应用图标路径
-    private func extractIconPath(from bundle: Bundle) -> String? {
-        // 尝试获取图标文件名
-        if let iconFile = bundle.object(forInfoDictionaryKey: "CFBundleIconFile") as? String {
-            // 尝试不同的扩展名
-            let possiblePaths = [
-                bundle.path(forResource: iconFile, ofType: nil),
-                bundle.path(forResource: iconFile, ofType: "icns"),
-                bundle.path(forResource: iconFile.replacingOccurrences(of: ".icns", with: ""), ofType: "icns")
-            ]
-            
-            for path in possiblePaths {
-                if let path = path, FileManager.default.fileExists(atPath: path) {
-                    return path
-                }
-            }
-        }
-        
-        // 尝试查找 Resources 目录下的 .icns 文件
-        if let resourcesPath = bundle.resourcePath {
-            do {
-                let contents = try FileManager.default.contentsOfDirectory(atPath: resourcesPath)
-                for file in contents {
-                    if file.hasSuffix(".icns") {
-                        return resourcesPath + "/" + file
-                    }
-                }
-            } catch {
-                // 忽略错误，继续其他方法
-            }
-        }
-        
-        return nil
-    }
+
     
     /// 去除重复的应用 (基于 bundle identifier)
     private func removeDuplicates(from apps: [AppItem]) -> [AppItem] {

@@ -32,24 +32,11 @@ struct AppItem: Codable, Identifiable, Equatable {
     
     /// 获取应用图标
     var icon: NSImage? {
-        // 优先使用缓存的图标路径
-        if let iconPath = iconPath,
-           let image = NSImage(contentsOfFile: iconPath) {
-            return image
-        }
-        
-        // 回退到从 bundle 获取图标
-        if let bundle = Bundle(path: path),
-           let iconFile = bundle.object(forInfoDictionaryKey: "CFBundleIconFile") as? String {
-            let iconPath = bundle.path(forResource: iconFile, ofType: nil) ??
-                          bundle.path(forResource: iconFile, ofType: "icns")
-            if let iconPath = iconPath {
-                return NSImage(contentsOfFile: iconPath)
-            }
-        }
-        
-        // 最后回退到系统默认图标
-        return NSWorkspace.shared.icon(forFile: path)
+        // 直接使用系统提供的图标获取方法，这是最可靠的方式
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        // 设置合适的图标大小
+        icon.size = NSSize(width: 64, height: 64)
+        return icon
     }
     
     /// 启动应用

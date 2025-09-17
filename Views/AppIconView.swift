@@ -14,13 +14,12 @@ struct AppIconView: View {
     let onTap: () -> Void
     
     @State private var isHovered = false
-    @State private var appIcon: NSImage?
     
     var body: some View {
         VStack(spacing: 4) {
             // 应用图标
             Group {
-                if let icon = appIcon {
+                if let icon = app.icon {
                     Image(nsImage: icon)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -55,9 +54,7 @@ struct AppIconView: View {
         .onTapGesture {
             onTap()
         }
-        .onAppear {
-            loadAppIcon()
-        }
+
         .contextMenu {
             // 右键菜单
             Button("打开") {
@@ -75,16 +72,7 @@ struct AppIconView: View {
             }
         }
     }
-    
-    /// 加载应用图标
-    private func loadAppIcon() {
-        Task {
-            let icon = app.icon
-            await MainActor.run {
-                self.appIcon = icon
-            }
-        }
-    }
+
     
     /// 显示应用信息
     private func showAppInfo() {
