@@ -8,12 +8,22 @@
 import SwiftUI
 import AppKit
 
-/// 单个应用图标视图 - 支持点击启动
+/// 单个应用图标视图 - 支持点击启动和拖拽
 struct AppIconView: View {
     let app: AppItem
     let onTap: () -> Void
-    
+    let onDragStarted: ((AppItem) -> Void)?
+    let onDragEnded: (() -> Void)?
+
     @State private var isHovered = false
+    @State private var isDragging = false
+
+    init(app: AppItem, onTap: @escaping () -> Void, onDragStarted: ((AppItem) -> Void)? = nil, onDragEnded: (() -> Void)? = nil) {
+        self.app = app
+        self.onTap = onTap
+        self.onDragStarted = onDragStarted
+        self.onDragEnded = onDragEnded
+    }
     
     var body: some View {
         VStack(spacing: 4) {
@@ -37,7 +47,9 @@ struct AppIconView: View {
             .frame(width: 64, height: 64)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .scaleEffect(isHovered ? 1.1 : 1.0)
+            .opacity(isDragging ? 0.5 : 1.0)
             .animation(.easeInOut(duration: 0.2), value: isHovered)
+            .animation(.easeInOut(duration: 0.1), value: isDragging)
             
             // 应用名称
             Text(app.displayName)
@@ -54,6 +66,8 @@ struct AppIconView: View {
         .onTapGesture {
             onTap()
         }
+        // 使用官方推荐的 .draggable 修饰符
+        .draggable(app)
 
         .contextMenu {
             // 右键菜单
@@ -87,6 +101,8 @@ struct AppIconView: View {
         alert.runModal()
     }
 }
+
+
 
 #Preview {
     let sampleApp = AppItem(

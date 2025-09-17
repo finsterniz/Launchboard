@@ -7,9 +7,11 @@
 
 import Foundation
 import AppKit
+import UniformTypeIdentifiers
+import CoreTransferable
 
 /// 应用程序信息模型
-struct AppItem: Codable, Identifiable, Equatable {
+struct AppItem: Codable, Identifiable, Equatable, Transferable {
     let id = UUID()
     let name: String                    // 应用名称
     let displayName: String             // 显示名称
@@ -57,4 +59,11 @@ struct AppItem: Codable, Identifiable, Equatable {
     var exists: Bool {
         return FileManager.default.fileExists(atPath: path)
     }
+
+    // MARK: - Transferable 协议实现
+    // 使用系统内建的 JSON 类型进行编码传输，避免自定义 UTI
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .json)
+    }
 }
+

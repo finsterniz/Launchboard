@@ -14,7 +14,7 @@ struct LaunchBoardView: View {
     var body: some View {
         ZStack {
             // 毛玻璃背景
-            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
+            VisualEffectView.launchPadStyle
                 .ignoresSafeArea()
             
             VStack(spacing: 20) {
@@ -31,10 +31,28 @@ struct LaunchBoardView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     AppGridView(
-                        apps: viewModel.currentPageApps,
+                        cells: viewModel.currentPageCells,
                         onAppTap: { app in
                             viewModel.launchApp(app)
-                        }
+                        },
+                        onDragStarted: { app in
+                            print("开始拖拽应用: \(app.displayName)")
+                        },
+                        onDragEnded: {
+                            print("拖拽结束")
+                        },
+                        onAppMoved: { app, targetIndex in
+                            // 兼容旧回调：默认视为插入到该 cell 之前
+                            viewModel.handleDrop(app, action: .insertBefore(indexInPage: targetIndex))
+                        },
+                        onDropAction: { app, action in
+                            viewModel.handleDrop(app, action: action)
+                        },
+                        onPageChange: { targetPage in
+                            viewModel.goToPage(targetPage)
+                        },
+                        currentPage: viewModel.currentPage,
+                        totalPages: viewModel.totalPages
                     )
                     .padding(.horizontal, 40)
                 }
@@ -75,26 +93,6 @@ struct LaunchBoardView: View {
                 }
             }
         }
-        // ESC 键处理将通过其他方式实现
-    }
-}
-
-/// 毛玻璃效果视图
-struct VisualEffectView: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    let blendingMode: NSVisualEffectView.BlendingMode
-    
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let visualEffectView = NSVisualEffectView()
-        visualEffectView.material = material
-        visualEffectView.blendingMode = blendingMode
-        visualEffectView.state = .active
-        return visualEffectView
-    }
-    
-    func updateNSView(_ visualEffectView: NSVisualEffectView, context: Context) {
-        visualEffectView.material = material
-        visualEffectView.blendingMode = blendingMode
     }
 }
 
@@ -102,3 +100,4 @@ struct VisualEffectView: NSViewRepresentable {
     LaunchBoardView()
         .frame(width: 800, height: 600)
 }
+
